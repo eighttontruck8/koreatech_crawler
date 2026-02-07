@@ -1,16 +1,23 @@
 import json
 import os
+import sys
 from pathlib import Path
-
+from zoneinfo import ZoneInfo
 import pandas as pd
 import requests
 
 # 너가 만든 크롤러 파일에서 crawl을 import 하도록 경로 맞춰줘
 # 예) from crawler import crawl
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
 from koreatech_crawler import crawl
 
 STATE_PATH = Path("state.json")
 WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
+
+# ✅ 알림 대상 판정(원하는대로 바꿔도 됨)
+# ALLOWED_STATUS = {"PASS"}        # PASS만 알림
+ALLOWED_STATUS = {"PASS", "NO_CONDITION", "UNKNOWN"}  # 전부 알림
 
 def load_state() -> dict:
     if STATE_PATH.exists():
@@ -43,6 +50,11 @@ def main():
     df = df.dropna(subset=["글번호_int"]).copy()
     df["글번호_int"] = df["글번호_int"].astype(int)
 
+# ✅ 상태 필터(PASS만 등)
+    if "판정" in df.columns:
+        df = df[df["판정"].isin(ALLOWED_STATUS)].copy()
+        
+        
     # ✅ “새 글”만 (번호가 증가한다는 전제)
     new_df = df[df["글번호_int"] > last_seen].sort_values("글번호_int")
 
