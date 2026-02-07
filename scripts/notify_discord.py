@@ -9,9 +9,9 @@ import requests
 # 너가 만든 크롤러 파일에서 crawl을 import 하도록 경로 맞춰줘
 # 예) from crawler import crawl
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.append(str(ROOT))
+sys.path.insert(0, str(ROOT))
 
-from koreatech_crawler import crawl
+from ko_crawler import crawl
 
 STATE_PATH = Path("state.json")
 WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
