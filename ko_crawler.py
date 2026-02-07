@@ -390,6 +390,9 @@ def crawl(
             # ✅ (B) 글 단위 스킵: 날짜 범위 밖이면 상세 요청 자체 하지 않음
             # ======================
             ok_range, _ = in_posted_range(it.get("posted_at") or "")
+            if debug and not ok_range:
+                print("[DROP]", it["post_id"], it["posted_at"], it["title"], "=>", "out of posted_at range")
+
             if not ok_range:
                 continue
 
