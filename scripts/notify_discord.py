@@ -8,7 +8,8 @@ import requests
 
 # 너가 만든 크롤러 파일에서 crawl을 import 하도록 경로 맞춰줘
 # 예) from crawler import crawl
-sys.path.append(str(Path(__file__).resolve().parent.parent))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(ROOT))
 
 from koreatech_crawler import crawl
 
