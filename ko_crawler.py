@@ -395,7 +395,7 @@ def crawl(
                 print("제목:", it["title"])
                 print("등록일:", it["posted_at"])
                 print("판정:", info.get("dq_status"), "사유:", info.get("dq_reasons"))
-                print("--------------------")
+                print("-------------------")
 
             if not ok:
                 continue
