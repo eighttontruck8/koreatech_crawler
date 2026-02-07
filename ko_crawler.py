@@ -192,17 +192,29 @@ def parse_list(html: str) -> list[dict]:
             if len(tds) < 6:
                 continue
 
-            post_id = tds[0].get_text(strip=True)
-            category = tds[1].get_text(strip=True)
-            title = tds[2].get_text(" ", strip=True)
-            posted_at = tds[3].get_text(strip=True)
-            writer = tds[4].get_text(strip=True)
-
-            if not post_id.isdigit():
+            # ✅ 글번호는 무조건 링크의 p=에서 추출
+            a = tr.select_one('a[href*="dm=r"][href*="p="]')
+            if not a:
                 continue
 
+            href = a.get("href", "")
+            m = re.search(r"[?&]p=(\d+)", href)
+            if not m:
+                continue
+            post_id = m.group(1)
+
+            # ✅ sanity check: 너무 큰 값은 버림(오탐 방지)
+            pid_int = int(post_id)
+            if pid_int > 200000:   # 지금 3만대인 상황에서 100만대는 거의 100% 오탐
+                continue
+
+            category = tds[1].get_text(strip=True)
             if "근로" not in category:
                 continue
+
+            title = a.get_text(" ", strip=True)
+            posted_at = tds[3].get_text(strip=True)
+            writer = tds[4].get_text(strip=True)
 
             link = DETAIL_URL.format(post_id=post_id)
             items.append({
@@ -213,9 +225,10 @@ def parse_list(html: str) -> list[dict]:
                 "writer": writer,
                 "link": link,
             })
+        # 중복 제거
+        uniq = {it["post_id"]: it for it in items}
+        return list(uniq.values())
 
-        if items:
-            return items
 
     text = soup.get_text("\n", strip=True)
     pattern = re.compile(

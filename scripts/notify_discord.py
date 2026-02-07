@@ -68,6 +68,12 @@ def main():
 
     # ✅ 알림 성공 후 state 갱신
     new_last_seen = int(new_df["글번호_int"].max())
+    
+    # ✅ 비정상적으로 큰 값이면 state 갱신하지 않음
+    if new_last_seen > 200000:
+        print(f"[WARN] suspicious post id {new_last_seen}, not updating state")
+        return
+
     state["last_seen_post_id"] = new_last_seen
     save_state(state)
 
