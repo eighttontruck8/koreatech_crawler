@@ -2,7 +2,7 @@ name: Workstudy notify
 
 on:
   schedule:
-    - cron: "*/20 * * * *"   # 20분마다 (원하면 바꿔)
+    - cron: "*/30 * * * *"   # 20분마다 (원하면 바꿔)
   workflow_dispatch:
 
 permissions:
