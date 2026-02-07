@@ -336,7 +336,7 @@ def crawl(
     max_pages: int = 500,
     max_items: int = 5000,
     debug: bool = False,
-    empty_page_stop: int = 10,
+    empty_page_stop: int = 100,
 ) -> pd.DataFrame:
     session = requests.Session()
 
