@@ -31,15 +31,9 @@ REQUEST_DELAY_SEC = 0.4  # 너무 빠르게 긁지 말기
 # ======================
 @dataclass
 class Criteria:
-    # 결격(초과학기/휴학생/국가근로 등) 명시되면 제외
-    # 단, "가능" 문맥이면 제외하지 않음. 애매하면 UNKNOWN/NO_CONDITION.
     exclude_if_disqualified: bool = True
-
-    # 등록일 기준 필터
-    posted_at_after: datetime | None = None   # inclusive lower bound
-    posted_at_before: datetime | None = None  # exclusive upper bound
-
-    # 마감일 기준 필터(원하면)
+    posted_at_after: datetime | None = None   # inclusive
+    posted_at_before: datetime | None = None  # exclusive
     deadline_after: datetime | None = None
 
 
@@ -96,9 +90,7 @@ RE_NOTICE_BLOCK = re.compile(
 def extract_notice_block(text: str) -> str:
     m = RE_NOTICE_BLOCK.search(text)
     if not m:
-        # 못 찾으면 전체 검사(보수적)
         return text
-    # 너무 길어도 오탐/성능 이슈라 일부만
     return m.group(0)[:2500]
 
 def window_around(text: str, match: re.Match, radius: int = 55) -> str:
@@ -107,12 +99,6 @@ def window_around(text: str, match: re.Match, radius: int = 55) -> str:
     return text[max(0, s - radius): min(len(text), e + radius)]
 
 def classify_keyword(text: str, kw_pat: re.Pattern) -> bool | None:
-    """
-    return:
-      True  = '불가/제외' 쪽으로 확실
-      False = '가능/허용' 쪽으로 확실
-      None  = 애매(UNKNOWN)
-    """
     t = norm(text)
     matches = list(kw_pat.finditer(t))
     if not matches:
@@ -135,11 +121,6 @@ def classify_keyword(text: str, kw_pat: re.Pattern) -> bool | None:
     return None
 
 def disqualify_status(body_text: str) -> tuple[str, list[str]]:
-    """
-    returns:
-      status: "PASS" | "BLOCK" | "UNKNOWN" | "NO_CONDITION"
-      reasons: 매칭된 키워드 리스트
-    """
     block = extract_notice_block(body_text)
     t = norm(block)
 
@@ -204,7 +185,6 @@ def parse_list(html: str) -> list[dict]:
     soup = BeautifulSoup(html, "lxml")
     items: list[dict] = []
 
-    # 1) 테이블 기반 파싱 시도
     rows = soup.select("table tbody tr")
     if rows:
         for tr in rows:
@@ -221,7 +201,6 @@ def parse_list(html: str) -> list[dict]:
             if not post_id.isdigit():
                 continue
 
-            # 분류에 "근로"가 들어간 것만
             if "근로" not in category:
                 continue
 
@@ -238,7 +217,6 @@ def parse_list(html: str) -> list[dict]:
         if items:
             return items
 
-    # 2) fallback: 텍스트에서 파싱
     text = soup.get_text("\n", strip=True)
     pattern = re.compile(
         r"(?m)^(?P<id>\d{5,})\s+(?P<cat>[^\n]+?)\s*\n(?P<title>[^\n]+?)\s*\n(?P<date>\d{4}-\d{2}-\d{2})\s+(?P<writer>[^\s]+)"
@@ -291,7 +269,6 @@ def parse_detail_text(html: str) -> str:
 def passes(item: dict, body_text: str) -> tuple[bool, dict]:
     info: dict = {}
 
-    # (1) 결격/UNKNOWN 판정
     status, reasons = disqualify_status(body_text)
     info["dq_status"] = status
     info["dq_reasons"] = reasons
@@ -299,7 +276,6 @@ def passes(item: dict, body_text: str) -> tuple[bool, dict]:
     if CRITERIA.exclude_if_disqualified and status == "BLOCK":
         return False, info
 
-    # (2) 등록일 필터
     posted_dt = None
     try:
         posted_dt = dtparser.parse(item["posted_at"])
@@ -315,7 +291,6 @@ def passes(item: dict, body_text: str) -> tuple[bool, dict]:
         if posted_dt >= CRITERIA.posted_at_before:
             return False, info
 
-    # (3) 마감일 필터(원하면)
     dl = extract_deadline(body_text, default_year=datetime.now().year)
     info["deadline"] = dl
     if CRITERIA.deadline_after and dl:
@@ -326,13 +301,29 @@ def passes(item: dict, body_text: str) -> tuple[bool, dict]:
 
 
 # ======================
+# ✅ 날짜 범위 체크 헬퍼 (상세 요청 스킵용)
+# ======================
+def in_posted_range(posted_at_str: str) -> tuple[bool, datetime | None]:
+    try:
+        dt = dtparser.parse(posted_at_str)
+    except Exception:
+        return True, None  # 날짜 파싱 실패하면 보수적으로 통과(스킵하지 않음)
+
+    if CRITERIA.posted_at_after and dt < CRITERIA.posted_at_after:
+        return False, dt
+    if CRITERIA.posted_at_before and dt >= CRITERIA.posted_at_before:
+        return False, dt
+    return True, dt
+
+
+# ======================
 # 메인 크롤러
 # ======================
 def crawl(
     max_pages: int = 500,
     max_items: int = 5000,
     debug: bool = False,
-    empty_page_stop: int = 10,  # 연속으로 "근로 글이 0개인 페이지"가 N번이면 종료
+    empty_page_stop: int = 10,
 ) -> pd.DataFrame:
     session = requests.Session()
 
@@ -344,7 +335,7 @@ def crawl(
         html = fetch(session, LIST_URL.format(page=page))
         items = parse_list(html)
 
-        # 근로 글이 없는 페이지가 연속으로 너무 많으면 종료(사이트 끝/구간)
+        # 근로 글이 없는 페이지가 연속으로 너무 많으면 종료
         if not items:
             empty_streak += 1
             if empty_streak >= empty_page_stop:
@@ -355,7 +346,40 @@ def crawl(
         else:
             empty_streak = 0
 
+        # ======================
+        # ✅ (A) 페이지 단위 조기 종료 판단 (상세 요청 전에!)
+        # ======================
+        page_dates: list[datetime] = []
         for it in items:
+            try:
+                page_dates.append(dtparser.parse(it["posted_at"]))
+            except Exception:
+                pass
+
+        if page_dates:
+            oldest = min(page_dates)
+            newest = max(page_dates)
+
+            # ✅ 이 페이지가 전부 before 이후(=너무 최신)면 그냥 다음 페이지로
+            if CRITERIA.posted_at_before and oldest >= CRITERIA.posted_at_before:
+                if debug:
+                    print(f"[SKIP PAGE {page}] oldest({oldest.date()}) >= posted_at_before({CRITERIA.posted_at_before.date()})")
+                continue
+
+            # ✅ 이 페이지가 전부 after 이전(=너무 과거)면 더 내려가도 의미 없음 → 종료
+            if CRITERIA.posted_at_after and newest < CRITERIA.posted_at_after:
+                if debug:
+                    print(f"[STOP] newest({newest.date()}) < posted_at_after({CRITERIA.posted_at_after.date()})")
+                break
+
+        for it in items:
+            # ======================
+            # ✅ (B) 글 단위 스킵: 날짜 범위 밖이면 상세 요청 자체 하지 않음
+            # ======================
+            ok_range, _ = in_posted_range(it.get("posted_at") or "")
+            if not ok_range:
+                continue
+
             if it["post_id"] in seen:
                 continue
             seen.add(it["post_id"])
@@ -393,12 +417,14 @@ def crawl(
         if len(out) >= max_items:
             break
 
-    return pd.DataFrame(out, columns=["글번호", "제목", "등록일", "작성자", "링크", "판정", "사유", "마감일추정"])
+    return pd.DataFrame(
+        out,
+        columns=["글번호", "제목", "등록일", "작성자", "링크", "판정", "사유", "마감일추정"]
+    )
 
 
 if __name__ == "__main__":
-    # 로컬 테스트용
-    df = crawl(max_pages=50, debug=True)
+    df = crawl(max_pages=500, debug=True)
 
     if not df.empty:
         df["등록일_dt"] = pd.to_datetime(df["등록일"], errors="coerce")
