@@ -41,7 +41,7 @@ class Criteria:
 CRITERIA = Criteria(
     exclude_if_disqualified=True,
     posted_at_after=datetime(2025, 1, 1),
-    posted_at_before=datetime(2026, 1, 1),
+    posted_at_before=None,
     deadline_after=None
 )
 
