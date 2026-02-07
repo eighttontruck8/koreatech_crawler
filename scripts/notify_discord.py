@@ -11,7 +11,7 @@ import requests
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT))
 
-from koreatech_crawler import crawl
+from ko_crawler import crawl
 
 STATE_PATH = Path("state.json")
 WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
